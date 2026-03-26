@@ -520,20 +520,23 @@
 
       prefList.forEach(function(entry, idx) {
         var pref = entry[0], r = entry[1];
-        if(r.total === 0) return; // 0枚の県は省略
         
         var allCities = Object.entries(r.cities).sort(function(a, b) {
           if (b[1].count !== a[1].count) return b[1].count - a[1].count;
           return a[0].localeCompare(b[0], 'ja');
         });
         
-        var maxCount = allCities.length && allCities[0][1].count > 0 ? allCities[0][1].count : 1;
+        var withData = allCities.filter(function(c) { return c[1].count > 0; });
+        var totalCities = (typeof ALL_NATION_CITIES !== 'undefined' && ALL_NATION_CITIES[pref]) ? ALL_NATION_CITIES[pref].length : allCities.length;
+        var coveredCities = withData.length;
+        var maxCount = withData.length ? withData[0][1].count : 1;
         var bgColor = PREF_COLORS[idx % PREF_COLORS.length];
 
         html += '<div class="pref-section">';
         html += '<div class="pref-header" style="background:' + bgColor + '" onclick="togglePref(this)">';
         html += '<div class="pref-left">';
         html += '<span class="pref-name">' + pref + '</span>';
+        html += '<span class="area-badge">' + coveredCities + '/' + totalCities + ' 市区町村</span>';
         html += '</div>';
         html += '<div style="display:flex;align-items:center;gap:12px;">';
         html += '<span class="pref-total">' + r.total.toLocaleString() + ' <span>枚</span></span>';
@@ -545,13 +548,14 @@
           + '<th>市区町村</th><th>配布枚数</th><th>エリア数</th></tr></thead><tbody>';
         allCities.forEach(function(c) {
           var name = c[0], d = c[1];
-          if(d.count === 0) return;
-          var barW = Math.max(3, (d.count / maxCount) * 100);
-          html += '<tr><td class="bar-cell">'
+          var barW = d.count > 0 ? Math.max(3, (d.count / maxCount) * 100) : 0;
+          var zeroStyle = d.count === 0 ? ' style="color:#475569"' : '';
+          var zeroTd = d.count === 0 ? ' style="color:#475569"' : '';
+          html += '<tr' + zeroStyle + '><td class="bar-cell">'
             + '<div class="bar-bg" style="width:' + barW + '%"></div>'
             + '<span class="bar-text">' + name + '</span></td>'
-            + '<td style="text-align:right; font-weight:bold; color:#059669;">' + d.count.toLocaleString() + ' 枚</td>'
-            + '<td style="text-align:right; font-weight:bold;">' + d.areas + '</td></tr>';
+            + '<td' + zeroTd + '>' + (d.count > 0 ? d.count.toLocaleString() + ' 枚' : '0 枚') + '</td>'
+            + '<td' + zeroTd + '>' + d.areas + '</td></tr>';
         });
         html += '</tbody></table></div></div>';
       });
