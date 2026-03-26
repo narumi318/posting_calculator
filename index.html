@@ -383,26 +383,62 @@
     ];
 
     
-    /* ===== クラウド通信機能 ===== */
-    var API_URL = window.location.protocol + '//' + window.location.hostname + ':8000/api';
+    /* ===== 共有クラウド機能（Googleフォーム＋スプレッドシート公開機能） ===== */
+    const POST_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdQrX_EXoywfZ7FjI1_RBZJrWqxCJfGQOPmhmKq7zUjQT9EYA/formResponse';
+    const ENTRY_ID = 'entry.1873815291';
+    const GET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRrTxXWE-9hY4iZq1z9pnsnD5smzgdG1ZdyhrhxIJsEg4cfqpNbbmmVTGte27g0jkSxgrhp9uB9vzqP/pub?output=csv';
+
+    // CSV解析用関数（改行やカンマに対応）
+    function parseCSV(str) {
+        let cells = [], row = [], inQ = false, val = '';
+        for (let i = 0; i < str.length; i++) {
+            let c = str[i];
+            if (c === '"') {
+                if (inQ && str[i+1] === '"') { val += '"'; i++; }
+                else { inQ = !inQ; }
+            } else if (c === ',' && !inQ) {
+                row.push(val); val = '';
+            } else if ((c === '\n' || c === '\r') && !inQ) {
+                if (c === '\r' && str[i+1] === '\n') { i++; }
+                row.push(val); cells.push(row); row = []; val = '';
+            } else {
+                val += c;
+            }
+        }
+        if (val || row.length) { row.push(val); cells.push(row); }
+        return cells;
+    }
 
     async function loadCloudData() {
       var btn = document.querySelector('button[onclick="loadCloudData()"]');
       var area = document.getElementById('cloudResultsArea');
       var oldText = btn.textContent;
       
-      btn.textContent = '☁️ 読み込み中...';
+      btn.textContent = '☁️ 最新データを読み込み中...';
       btn.disabled = true;
       area.innerHTML = '';
       area.classList.remove('show');
       
       try {
-        let res = await fetch(API_URL + '/results');
+        let res = await fetch(GET_CSV_URL);
         if (!res.ok) throw new Error('通信エラー');
-        let data = await res.json();
+        let csvText = await res.text();
+        
+        let rows = parseCSV(csvText);
+        let data = [];
+        // スプレッドシートの2行目（i=1）から読み込み（1行目はヘッダーのため除外）
+        for (let i = 1; i < rows.length; i++) {
+            if (rows[i] && rows[i].length >= 2) {
+                try {
+                    // Googleフォームの設定上、B列（インデックス1）にJSONデータが入っています
+                    let parsedData = JSON.parse(rows[i][1]);
+                    if (Array.isArray(parsedData)) data = data.concat(parsedData);
+                } catch(e) { /* 空行などを無視 */ }
+            }
+        }
         
         if (data.length === 0) {
-           area.innerHTML = '<div style="text-align:center;color:#64748b;padding:20px;">まだクラウドにデータがありません。</div>';
+           area.innerHTML = '<div style="text-align:center;color:#64748b;padding:20px;">まだクラウドに共有データがありません。</div>';
            area.classList.add('show');
            return;
         }
@@ -431,7 +467,7 @@
         renderCloud(cloudResult, area);
         
       } catch(e) {
-        area.innerHTML = '<div style="color:#dc2626;text-align:center;">⚠️ クラウドサーバーに接続できませんでした。<br>Dockerが起動しているか確認してください。</div>';
+        area.innerHTML = '<div style="color:#dc2626;text-align:center;">⚠️ データの読み込みに失敗しました。</div>';
         area.classList.add('show');
       } finally {
         btn.textContent = oldText;
@@ -451,17 +487,19 @@
        saveBtn.disabled = true;
        
        try {
-           let res = await fetch(API_URL + '/save', {
+           let formData = new FormData();
+           formData.append(ENTRY_ID, JSON.stringify(window._calcResultListToSave));
+           
+           await fetch(POST_URL, {
                method: 'POST',
-               headers: { 'Content-Type': 'application/json' },
-               body: JSON.stringify(window._calcResultListToSave)
+               mode: 'no-cors', // クロスドメイン制限を回避
+               body: formData
            });
-           if(!res.ok) throw new Error('保存エラー');
-           let answer = await res.json();
-           alert('✅ ' + answer.message);
+           
+           alert('✅ クラウドにデータを保存・共有しました！\n（※Googleの仕様上、数秒タイムラグがある場合があります）');
            saveBtn.style.display = 'none'; // 送信済みにする
        } catch(e) {
-           alert('⚠️ エラー: クラウドサーバーと通信できませんでした。');
+           alert('⚠️ エラー: クラウドとの通信に失敗しました。');
        } finally {
            saveBtn.textContent = oldText;
            saveBtn.disabled = false;
