@@ -229,8 +229,8 @@
     <div class="header-inner">
       <div class="header-icon">📊</div>
       <div>
-        <h1>ポスティング配布枚数 集計ツール</h1>
-        <p>全国の配布枚数を都道府県・市区町村別に自動集計</p>
+        <h1>🌐 共有クラウド ポスティング集計</h1>
+        <p>チーム全員で集計データを共有できるクラウド版ツール</p>
       </div>
     </div>
   </div>
@@ -290,6 +290,19 @@
         <div class="pbar-text" id="ptext">処理中...</div>
       </div>
       <button class="calc-btn" id="calcBtn" onclick="startCalc()">🧮 集計する</button>
+    </div>
+
+    
+    <div class="card">
+      <div class="card-header">
+        <div class="card-num">☁️</div>
+        <div class="card-title">共有クラウドデータ</div>
+      </div>
+      <div class="card-desc">
+        他の人が集計して保存した「全体の合計データ」を読み込みます。
+      </div>
+      <button class="calc-btn" onclick="loadCloudData()" style="background: linear-gradient(135deg, #3b82f6, #06b6d4); margin-bottom: 20px;">☁️ 最新のクラウドデータを読み込む</button>
+      <div id="cloudResultsArea" class="results"></div>
     </div>
 
     <!-- 結果 -->
@@ -368,6 +381,145 @@
       'rgba(59,130,246,0.08)', 'rgba(99,102,241,0.08)', 'rgba(139,92,246,0.08)',
       'rgba(168,85,247,0.08)', 'rgba(236,72,153,0.08)', 'rgba(244,63,94,0.08)'
     ];
+
+    
+    /* ===== クラウド通信機能 ===== */
+    var API_URL = window.location.protocol + '//' + window.location.hostname + ':8000/api';
+
+    async function loadCloudData() {
+      var btn = document.querySelector('button[onclick="loadCloudData()"]');
+      var area = document.getElementById('cloudResultsArea');
+      var oldText = btn.textContent;
+      
+      btn.textContent = '☁️ 読み込み中...';
+      btn.disabled = true;
+      area.innerHTML = '';
+      area.classList.remove('show');
+      
+      try {
+        let res = await fetch(API_URL + '/results');
+        if (!res.ok) throw new Error('通信エラー');
+        let data = await res.json();
+        
+        if (data.length === 0) {
+           area.innerHTML = '<div style="text-align:center;color:#64748b;padding:20px;">まだクラウドにデータがありません。</div>';
+           area.classList.add('show');
+           return;
+        }
+        
+        // データを result 形式に変換
+        var cloudResult = {};
+        if (typeof ALL_NATION_CITIES !== 'undefined') {
+          Object.keys(ALL_NATION_CITIES).forEach(function(pref) {
+            cloudResult[pref] = { total: 0, areas: 0, cities: {} };
+            ALL_NATION_CITIES[pref].forEach(function(c) {
+              cloudResult[pref].cities[c] = { count: 0, areas: 0 };
+            });
+          });
+        }
+        
+        data.forEach(function(d) {
+           if(!cloudResult[d.pref]) cloudResult[d.pref] = { total: 0, areas: 0, cities: {} };
+           cloudResult[d.pref].total += d.count;
+           cloudResult[d.pref].areas += d.areas;
+           if(!cloudResult[d.pref].cities[d.city]) cloudResult[d.pref].cities[d.city] = {count:0, areas:0};
+           cloudResult[d.pref].cities[d.city].count += d.count;
+           cloudResult[d.pref].cities[d.city].areas += d.areas;
+        });
+        
+        // 描画
+        renderCloud(cloudResult, area);
+        
+      } catch(e) {
+        area.innerHTML = '<div style="color:#dc2626;text-align:center;">⚠️ クラウドサーバーに接続できませんでした。<br>Dockerが起動しているか確認してください。</div>';
+        area.classList.add('show');
+      } finally {
+        btn.textContent = oldText;
+        btn.disabled = false;
+      }
+    }
+
+    async function saveToCloud() {
+       if(!window._calcResultListToSave || window._calcResultListToSave.length===0) {
+          alert('送信するデータがありません。');
+          return;
+       }
+       
+       var saveBtn = document.getElementById('saveCloudBtn');
+       var oldText = saveBtn.textContent;
+       saveBtn.textContent = '🚀 送信中...';
+       saveBtn.disabled = true;
+       
+       try {
+           let res = await fetch(API_URL + '/save', {
+               method: 'POST',
+               headers: { 'Content-Type': 'application/json' },
+               body: JSON.stringify(window._calcResultListToSave)
+           });
+           if(!res.ok) throw new Error('保存エラー');
+           let answer = await res.json();
+           alert('✅ ' + answer.message);
+           saveBtn.style.display = 'none'; // 送信済みにする
+       } catch(e) {
+           alert('⚠️ エラー: クラウドサーバーと通信できませんでした。');
+       } finally {
+           saveBtn.textContent = oldText;
+           saveBtn.disabled = false;
+       }
+    }
+    
+    function renderCloud(cloudResult, area) {
+      var prefList = Object.entries(cloudResult).sort(function(a, b) {
+        return b[1].total - a[1].total;
+      });
+      var grandTotal = prefList.reduce(function(s, e) { return s + e[1].total; }, 0);
+      
+      var html = '<div class="results-title">☁️ クラウド 全体共有データ</div>';
+      html += '<div class="total-card">'
+        + '<div class="total-label">全チーム合計配布枚数</div>'
+        + '<div><span class="total-number">' + grandTotal.toLocaleString() + '</span>'
+        + '<span class="total-unit">枚</span></div></div>';
+
+      prefList.forEach(function(entry, idx) {
+        var pref = entry[0], r = entry[1];
+        if(r.total === 0) return; // 0枚の県は省略
+        
+        var allCities = Object.entries(r.cities).sort(function(a, b) {
+          if (b[1].count !== a[1].count) return b[1].count - a[1].count;
+          return a[0].localeCompare(b[0], 'ja');
+        });
+        
+        var maxCount = allCities.length && allCities[0][1].count > 0 ? allCities[0][1].count : 1;
+        var bgColor = PREF_COLORS[idx % PREF_COLORS.length];
+
+        html += '<div class="pref-section">';
+        html += '<div class="pref-header" style="background:' + bgColor + '" onclick="togglePref(this)">';
+        html += '<div class="pref-left">';
+        html += '<span class="pref-name">' + pref + '</span>';
+        html += '</div>';
+        html += '<div style="display:flex;align-items:center;gap:12px;">';
+        html += '<span class="pref-total">' + r.total.toLocaleString() + ' <span>枚</span></span>';
+        html += '<span class="toggle-icon">▼</span>';
+        html += '</div></div>';
+
+        html += '<div class="city-table-wrap">';
+        html += '<table class="city-table"><thead><tr>'
+          + '<th>市区町村</th><th>配布枚数</th><th>エリア数</th></tr></thead><tbody>';
+        allCities.forEach(function(c) {
+          var name = c[0], d = c[1];
+          if(d.count === 0) return;
+          var barW = Math.max(3, (d.count / maxCount) * 100);
+          html += '<tr><td class="bar-cell">'
+            + '<div class="bar-bg" style="width:' + barW + '%"></div>'
+            + '<span class="bar-text">' + name + '</span></td>'
+            + '<td style="text-align:right; font-weight:bold; color:#059669;">' + d.count.toLocaleString() + ' 枚</td>'
+            + '<td style="text-align:right; font-weight:bold;">' + d.areas + '</td></tr>';
+        });
+        html += '</tbody></table></div></div>';
+      });
+      area.innerHTML = html;
+      area.classList.add('show');
+    }
 
     /* ===== メイン集計 ===== */
     async function startCalc() {
@@ -536,7 +688,26 @@
 
       html += '<button class="csv-btn" onclick="downloadCSV()">📥 CSVダウンロード</button>';
 
-      resArea.innerHTML = html;
+      
+      // 送信用データ作成
+      var toSave = [];
+      prefList.forEach(function(entry) {
+          var pref = entry[0], r = entry[1];
+          Object.entries(r.cities).forEach(function(c) {
+             if(c[1].count > 0) {
+                 toSave.push({ pref: pref, city: c[0], count: c[1].count, areas: c[1].areas });
+             }
+          });
+      });
+      window._calcResultListToSave = toSave;
+      
+      var injectHTML = '<br><br><div style="text-align:center; padding: 30px; background: rgba(59,130,246,0.05); border-radius:15px; border:2px dashed #93c5fd; margin-bottom:20px;">'
+          + '<h3 style="color:#2563eb; margin-bottom:10px;">☁️ 結果をクラウドに共有しますか？</h3>'
+          + '<p style="font-size:13px; color:#475569; margin-bottom:15px;">保存すると、チーム全員の合計に合算されます！</p>'
+          + '<button id="saveCloudBtn" onclick="saveToCloud()" style="background: linear-gradient(135deg, #3b82f6, #60a5fa); color: white; border: none; padding: 14px 36px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; transition: all 0.3s;">🚀 クラウドへ保存して共有</button>'
+          + '</div>';
+      resArea.innerHTML = injectHTML + html;
+
       resArea.classList.add('show');
       btn.disabled = false;
       setTimeout(function() { progArea.classList.remove('show'); }, 1000);
