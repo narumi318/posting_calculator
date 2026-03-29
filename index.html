@@ -359,14 +359,20 @@
               'JP-36':'徳島県','JP-37':'香川県','JP-38':'愛媛県','JP-39':'高知県','JP-40':'福岡県','JP-41':'佐賀県','JP-42':'長崎県',
               'JP-43':'熊本県','JP-44':'大分県','JP-45':'宮崎県','JP-46':'鹿児島県','JP-47':'沖縄県'
             };
-            var pref = isoMap[a['ISO3166-2-lvl4']] || a.province || a.state || '';
-            var city = a.city || a.town || a.village || a.county || a.suburb || '';
+            var pref = isoMap[a['ISO3166-2-lvl4']] || a.province || a.state || a.region || '';
+            if (!pref && a.county && a.county.endsWith('県')) pref = a.county;
+            if (!pref && a.city && a.city.endsWith('府')) pref = a.city;
+            var c1 = a.city || a.town || a.village || '';
+            var c2 = a.city_district || a.suburb || a.borough || a.county || a.local_admin || '';
+            if (c1 === '東京' || c1 === '東京都') c1 = '';
+            var city = c1 || c2;
             /* 政令指定都市など、区が含まれる場合の結合処理 */
-            var ward = a.city_district || a.suburb || '';
+            var ward = c2;
             if (ward && ward.endsWith('区') && city && !city.endsWith('区')) {
-              city = city + ward;
+              city = c1 + ward;
             }
-            resolve({ pref: pref, city: city });
+            if (!city && a.neighbourhood) city = a.neighbourhood;
+            resolve({ pref: pref || '', city: city || '' });
           })
           .catch(function() { resolve({ pref: '', city: '' }); });
       });
@@ -425,17 +431,23 @@
         let csvText = await res.text();
         
         let rows = parseCSV(csvText);
-        let data = [];
+        let latestDataMap = {}; // 市区町村ごとに最新データを保持
         // スプレッドシートの2行目（i=1）から読み込み（1行目はヘッダーのため除外）
         for (let i = 1; i < rows.length; i++) {
             if (rows[i] && rows[i].length >= 2) {
                 try {
                     // Googleフォームの設定上、B列（インデックス1）にJSONデータが入っています
                     let parsedData = JSON.parse(rows[i][1]);
-                    if (Array.isArray(parsedData)) data = data.concat(parsedData);
+                    if (Array.isArray(parsedData)) {
+                        parsedData.forEach(function(d) {
+                            let key = d.pref + "_" + d.city;
+                            latestDataMap[key] = d; // 同じ市区町村は最新のデータで上書き
+                        });
+                    }
                 } catch(e) { /* 空行などを無視 */ }
             }
         }
+        let data = Object.values(latestDataMap);
         
         if (data.length === 0) {
            area.innerHTML = '<div style="text-align:center;color:#64748b;padding:20px;">まだクラウドに共有データがありません。</div>';
@@ -467,7 +479,7 @@
         renderCloud(cloudResult, area);
         
       } catch(e) {
-        area.innerHTML = '<div style="color:#dc2626;text-align:center;">⚠️ データの読み込みに失敗しました。</div>';
+        area.innerHTML = '<div style="color:#dc2626;text-align:center;padding:20px;">⚠️ データの読み込みに失敗しました。<br><br><span style="font-size:12px;color:#ef4444;">詳細エラー: ' + e.message + '</span></div>';
         area.classList.add('show');
       } finally {
         btn.textContent = oldText;
@@ -618,7 +630,7 @@
         ptext.textContent = '地名を判定中... (' + (i+1) + '/' + needGeo.length + ')' + (cachedCount > 0 ? ' +キャッシュ' + cachedCount + '件' : '');
         pbar.style.width = ((i+1) / needGeo.length * 100) + '%';
         var geo = await reverseGeo(needGeo[i][1].lat, needGeo[i][1].lng);
-        geoCache[needGeo[i][0]] = geo;
+        if (geo && geo.pref && geo.city) geoCache[needGeo[i][0]] = geo;
         if ((i + 1) % 10 === 0 || i === needGeo.length - 1) saveCache();
         if (i < needGeo.length - 1) await wait(1100);
       }
