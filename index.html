@@ -830,7 +830,10 @@
             } catch (e) { /* 空行などを無視 */ }
           }
         }
-        let data = Object.values(latestDataMap);
+        let data = Object.values(latestDataMap).filter(function (d) {
+          // 「判定不能」のデータは除外（修正前の古いデータとの二重カウントを防ぐ）
+          return d.pref && d.city && d.pref.indexOf('判定不能') === -1 && d.city.indexOf('判定不能') === -1;
+        });
 
         if (data.length === 0) {
           area.innerHTML = '<div style="text-align:center;color:#64748b;padding:20px;">まだクラウドに共有データがありません。</div>';
