@@ -469,7 +469,8 @@
     }
 
     .city-table-wrap.open {
-      max-height: 999999px; /* リストが長くても見切れないように極端に大きな値を設定 */
+      max-height: 999999px;
+      /* リストが長くても見切れないように極端に大きな値を設定 */
     }
 
     .city-table {
@@ -957,6 +958,10 @@
         });
         html += '</tbody></table></div></div>';
       });
+
+      html += '<br><button class="csv-btn" onclick="downloadCloudCSV()">📥 クラウドデータをCSVダウンロード</button>';
+      
+      window._cloudPrefList = prefList;
       area.innerHTML = html;
       area.classList.add('show');
     }
@@ -1159,6 +1164,48 @@
     function togglePref(el) {
       el.classList.toggle('open');
       el.nextElementSibling.classList.toggle('open');
+    }
+
+    /* === クラウド版 CSV出力 === */
+    function downloadCloudCSV() {
+      var prefList = window._cloudPrefList;
+      if (!prefList) return;
+
+      var bom = '\uFEFF';
+      var lines = ['都道府県,市区町村,配布枚数,エリア数'];
+
+      prefList.forEach(function (entry) {
+        var pref = entry[0], r = entry[1];
+        if (typeof ALL_NATION_CITIES !== 'undefined' && ALL_NATION_CITIES[pref]) {
+          ALL_NATION_CITIES[pref].forEach(function (cityName) {
+            var d = r.cities[cityName] || { count: 0, areas: 0 };
+            lines.push(pref + ',' + cityName + ',' + d.count + ',' + d.areas);
+          });
+          /* マスターにないAPI表記ゆれ等を出力 */
+          Object.entries(r.cities).forEach(function (c) {
+            if (ALL_NATION_CITIES[pref].indexOf(c[0]) === -1) {
+              lines.push(pref + ',' + c[0] + ',' + c[1].count + ',' + c[1].areas);
+            }
+          });
+        } else {
+          var cityList = Object.entries(r.cities).sort(function (a, b) {
+            return b[1].count - a[1].count;
+          });
+          cityList.forEach(function (c) {
+            lines.push(pref + ',' + c[0] + ',' + c[1].count + ',' + c[1].areas);
+          });
+        }
+      });
+
+      var blob = new Blob([bom + lines.join('\n')], { type: 'text/csv' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = '全体クラウドデータ_' + new Date().toISOString().slice(0, 10) + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     }
 
     /* === CSV出力（全都道府県対応） === */
