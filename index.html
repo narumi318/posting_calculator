@@ -1139,7 +1139,9 @@
       prefList.forEach(function (entry) {
         var pref = entry[0], r = entry[1];
         Object.entries(r.cities).forEach(function (c) {
-          toSave.push({ pref: pref, city: c[0], count: c[1].count, areas: c[1].areas });
+          if (c[1].count > 0) {
+            toSave.push({ pref: pref, city: c[0], count: c[1].count, areas: c[1].areas });
+          }
         });
       });
       window._calcResultListToSave = toSave;
