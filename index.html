@@ -1033,7 +1033,10 @@
         var k = cacheKey(d.lat, d.lng);
         if (!uniqueCoords[k]) uniqueCoords[k] = { lat: d.lat, lng: d.lng };
       });
-      var needGeo = Object.entries(uniqueCoords).filter(function (e) { return !geoCache[e[0]]; });
+      var needGeo = Object.entries(uniqueCoords).filter(function (e) {
+        var cache = geoCache[e[0]];
+        return !cache || (cache.city && cache.city.endsWith('郡'));
+      });
 
       var cachedCount = Object.keys(uniqueCoords).length - needGeo.length;
 
@@ -1074,9 +1077,12 @@
         var k = cacheKey(d.lat, d.lng);
         var geo = geoCache[k] || { pref: '', city: '' };
         var pref = geo.pref || '（判定不能）';
-        if (!result[pref]) {
-          result[pref] = { total: 0, areas: 0, cities: {} };
+        var city = geo.city || '（不明）';
+        
+        if (pref !== '（判定不能）' && typeof ALL_NATION_CITIES !== 'undefined' && ALL_NATION_CITIES[pref] && ALL_NATION_CITIES[pref].indexOf(city) === -1) {
+           pref = '（判定不能）'; // マスターにない場合は判定不能にする
         }
+        if (!result[pref]) result[pref] = { total: 0, areas: 0, cities: {} };
       });
 
       /* 実際のデータを集計 */
@@ -1087,6 +1093,15 @@
         var pref = geo.pref || '（判定不能）';
         var city = geo.city || '（不明）';
 
+        // マスターデータにない市町村の場合（「西多摩郡」などのAPI揺らぎ）は判定不能枠に押し込む
+        if (pref !== '（判定不能）' && typeof ALL_NATION_CITIES !== 'undefined' && ALL_NATION_CITIES[pref]) {
+           if (ALL_NATION_CITIES[pref].indexOf(city) === -1) {
+              pref = '（判定不能）';
+              city = '（マスター非該当: ' + city + '）';
+           }
+        }
+
+        if (!result[pref]) result[pref] = { total: 0, areas: 0, cities: {} };
         result[pref].total += count;
         result[pref].areas += 1;
         if (!result[pref].cities[city]) result[pref].cities[city] = { count: 0, areas: 0 };
