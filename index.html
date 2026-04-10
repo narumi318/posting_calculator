@@ -852,7 +852,16 @@
         }
         let data = Object.values(latestDataMap).filter(function (d) {
           // 「判定不能」のデータは除外（修正前の古いデータとの二重カウントを防ぐ）
-          return d.pref && d.city && d.pref.indexOf('判定不能') === -1 && d.city.indexOf('判定不能') === -1;
+          if (!d.pref || !d.city || d.pref.indexOf('判定不能') !== -1 || d.city.indexOf('判定不能') !== -1) {
+            return false;
+          }
+          // マスターデータにない市区町村（「西多摩郡」などの過去の誤判定ゴミデータ）も除外
+          if (typeof ALL_NATION_CITIES !== 'undefined' && ALL_NATION_CITIES[d.pref]) {
+            if (ALL_NATION_CITIES[d.pref].indexOf(d.city) === -1) {
+              return false;
+            }
+          }
+          return true;
         });
 
         if (data.length === 0) {
