@@ -775,6 +775,37 @@
               city = c1 + ward;
             }
             if (!city && a.neighbourhood) city = a.neighbourhood;
+            
+            // マスターデータとの表記揺れを吸収
+            if (city && typeof ALL_NATION_CITIES !== 'undefined' && pref && ALL_NATION_CITIES[pref]) {
+              // そのまま見つかればOK、見つからなければ正規化を試みる
+              if (ALL_NATION_CITIES[pref].indexOf(city) === -1) {
+                // 各種表記揺れのバリエーションを生成して照合
+                var variants = [
+                  // 「ヶ」↔「ケ」の相互変換
+                  city.replace(/ヶ/g, 'ケ'),
+                  city.replace(/ケ/g, 'ヶ'),
+                  city.replace(/ヵ/g, 'カ'),
+                  city.replace(/ヶ/g, 'ケ').replace(/ヵ/g, 'カ'),
+                  // 漢字の表記揺れ（APIが簡略漢字を返す場合）
+                  city.replace(/釜/g, '竈'),   // 塩釜→塩竈
+                  city.replace(/竈/g, '釜'),   // 塩竈→塩釜
+                  city.replace(/竜/g, '龍'),   // 天竜→天龍
+                  city.replace(/龍/g, '竜'),   // 天龍→天竜
+                  city.replace(/嶋/g, '島'),   // 嶋→島
+                  city.replace(/島/g, '嶋'),   // 島→嶋
+                  city.replace(/澤/g, '沢'),   // 澤→沢
+                  city.replace(/沢/g, '澤'),   // 沢→澤
+                ];
+                for (var vi = 0; vi < variants.length; vi++) {
+                  if (ALL_NATION_CITIES[pref].indexOf(variants[vi]) !== -1) {
+                    city = variants[vi];
+                    break;
+                  }
+                }
+              }
+            }
+            
             resolve({ pref: pref || '', city: city || '' });
           })
           .catch(function () { resolve({ pref: '', city: '' }); });
@@ -1035,7 +1066,13 @@
       });
       var needGeo = Object.entries(uniqueCoords).filter(function (e) {
         var cache = geoCache[e[0]];
-        return !cache || (cache.city && cache.city.endsWith('郡'));
+        if (!cache) return true;
+        if (cache.city && cache.city.endsWith('郡')) return true;
+        // マスターデータに存在しない地名の場合も再取得（表記揺れ修正のため）
+        if (cache.pref && cache.city && typeof ALL_NATION_CITIES !== 'undefined' && ALL_NATION_CITIES[cache.pref]) {
+          if (ALL_NATION_CITIES[cache.pref].indexOf(cache.city) === -1) return true;
+        }
+        return false;
       });
 
       var cachedCount = Object.keys(uniqueCoords).length - needGeo.length;
