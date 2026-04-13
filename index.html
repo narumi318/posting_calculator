@@ -910,17 +910,8 @@
           }
         }
         let data = Object.values(latestDataMap).filter(function (d) {
-          // 「判定不能」のデータは除外
-          if (!d.pref || !d.city || d.pref.indexOf('判定不能') !== -1 || d.city.indexOf('判定不能') !== -1) {
-            return false;
-          }
-          // 正規化後もマスターデータにない市区町村は除外
-          if (typeof ALL_NATION_CITIES !== 'undefined' && ALL_NATION_CITIES[d.pref]) {
-            if (ALL_NATION_CITIES[d.pref].indexOf(d.city) === -1) {
-              return false;
-            }
-          }
-          return true;
+          // 空データのみ除外（それ以外は全て合計に含める）
+          return d.pref && d.city && d.count > 0;
         });
 
         if (data.length === 0) {
@@ -944,6 +935,7 @@
           if (!cloudResult[d.pref]) cloudResult[d.pref] = { total: 0, areas: 0, cities: {} };
           cloudResult[d.pref].total += d.count;
           cloudResult[d.pref].areas += d.areas;
+          // 正規化した名前で集計（マスター未該当でもそのまま追加）
           if (!cloudResult[d.pref].cities[d.city]) cloudResult[d.pref].cities[d.city] = { count: 0, areas: 0 };
           cloudResult[d.pref].cities[d.city].count += d.count;
           cloudResult[d.pref].cities[d.city].areas += d.areas;
