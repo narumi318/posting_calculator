@@ -814,6 +814,32 @@
 
     function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
+    /* ===== 市区町村名の表記揺れ正規化（共通関数） ===== */
+    function normalizeCityName(pref, city) {
+      if (!city || !pref || typeof ALL_NATION_CITIES === 'undefined' || !ALL_NATION_CITIES[pref]) return city;
+      // そのまま一致すればOK
+      if (ALL_NATION_CITIES[pref].indexOf(city) !== -1) return city;
+      // 各種バリエーションを試す
+      var variants = [
+        city.replace(/\u30f6/g, '\u30b1'),  // ヶ→ケ
+        city.replace(/\u30b1/g, '\u30f6'),  // ケ→ヶ
+        city.replace(/\u30f5/g, '\u30ab'),  // ヵ→カ
+        city.replace(/\u30f6/g, '\u30b1').replace(/\u30f5/g, '\u30ab'),
+        city.replace(/釜/g, '竈'),
+        city.replace(/竈/g, '釜'),
+        city.replace(/竜/g, '龍'),
+        city.replace(/龍/g, '竜'),
+        city.replace(/嶋/g, '島'),
+        city.replace(/島/g, '嶋'),
+        city.replace(/澤/g, '沢'),
+        city.replace(/沢/g, '澤'),
+      ];
+      for (var i = 0; i < variants.length; i++) {
+        if (ALL_NATION_CITIES[pref].indexOf(variants[i]) !== -1) return variants[i];
+      }
+      return city;
+    }
+
     /* ===== 県ヘッダーの色パレット ===== */
     var PREF_COLORS = [
       'rgba(239,68,68,0.08)', 'rgba(249,115,22,0.08)', 'rgba(245,158,11,0.08)',
@@ -874,6 +900,8 @@
               let parsedData = JSON.parse(rows[i][1]);
               if (Array.isArray(parsedData)) {
                 parsedData.forEach(function (d) {
+                  // ★ クラウドデータの市区町村名を正規化
+                  d.city = normalizeCityName(d.pref, d.city);
                   let key = d.pref + "_" + d.city;
                   latestDataMap[key] = d; // 同じ市区町村は最新のデータで上書き
                 });
@@ -882,11 +910,11 @@
           }
         }
         let data = Object.values(latestDataMap).filter(function (d) {
-          // 「判定不能」のデータは除外（修正前の古いデータとの二重カウントを防ぐ）
+          // 「判定不能」のデータは除外
           if (!d.pref || !d.city || d.pref.indexOf('判定不能') !== -1 || d.city.indexOf('判定不能') !== -1) {
             return false;
           }
-          // マスターデータにない市区町村（「西多摩郡」などの過去の誤判定ゴミデータ）も除外
+          // 正規化後もマスターデータにない市区町村は除外
           if (typeof ALL_NATION_CITIES !== 'undefined' && ALL_NATION_CITIES[d.pref]) {
             if (ALL_NATION_CITIES[d.pref].indexOf(d.city) === -1) {
               return false;
@@ -1114,10 +1142,10 @@
         var k = cacheKey(d.lat, d.lng);
         var geo = geoCache[k] || { pref: '', city: '' };
         var pref = geo.pref || '（判定不能）';
-        var city = geo.city || '（不明）';
+        var city = normalizeCityName(pref, geo.city || '（不明）');
         
         if (pref !== '（判定不能）' && typeof ALL_NATION_CITIES !== 'undefined' && ALL_NATION_CITIES[pref] && ALL_NATION_CITIES[pref].indexOf(city) === -1) {
-           pref = '（判定不能）'; // マスターにない場合は判定不能にする
+           pref = '（判定不能）';
         }
         if (!result[pref]) result[pref] = { total: 0, areas: 0, cities: {} };
       });
@@ -1130,7 +1158,10 @@
         var pref = geo.pref || '（判定不能）';
         var city = geo.city || '（不明）';
 
-        // マスターデータにない市町村の場合（「西多摩郡」などのAPI揺らぎ）は判定不能枠に押し込む
+        // ★ まず表記揺れを正規化してからマスター照合する
+        city = normalizeCityName(pref, city);
+
+        // 正規化してもマスターデータにない場合は判定不能にする
         if (pref !== '（判定不能）' && typeof ALL_NATION_CITIES !== 'undefined' && ALL_NATION_CITIES[pref]) {
            if (ALL_NATION_CITIES[pref].indexOf(city) === -1) {
               pref = '（判定不能）';
